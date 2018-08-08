@@ -50,7 +50,22 @@ else
 		</script>
 <?php
 		//Testing SmS
+		
+	require('textlocal.class.php');
 
+	$textlocal = new Textlocal(false,false, 'BIQUMilYdl4-cHeNgYIE03vFTPrTEqm1QPNFGTJMh5');
+
+	$numbers = array(353899689944);
+	$sender = 'Textlocal';
+	$message = 'got message?';
+
+	try {
+	    $result = $textlocal->sendSms($numbers, $message, $sender);
+	    print_r($result);
+	} catch (Exception $e) {
+	    die('Error: ' . $e->getMessage());
+	}
+	/*
 	// Authorisation details.
 	$username = "nileenamv@gmail.com";
 	$hash = "bdbb469355e2139b95b6e545bee29c6d4027d7e19d482f0782aed18fe75350f6";
@@ -70,6 +85,7 @@ else
 	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 	$result = curl_exec($ch); // This is the result from the API
 	curl_close($ch);
+	*/
 ?>
 	<? }
 	else{
