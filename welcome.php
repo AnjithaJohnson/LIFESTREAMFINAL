@@ -8,6 +8,7 @@ $result=mysqli_query($conn,$sql);
           while($data=mysqli_fetch_array($result))
           {
         $to=$data["phone_no"];
+                alert("ph: "+$to);
         ?>
 <?php
   // Authorisation details.
