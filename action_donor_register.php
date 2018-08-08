@@ -49,14 +49,15 @@ else
 			window.location.href="index.php";
 		</script>
 <?php
-		//Testing SmS
-		
+	
+	//Testing SmS
+	if(isset($_POST['Register'])){	
 	require('textlocal.class.php');
 
 	$textlocal = new Textlocal(false,false, 'BIQUMilYdl4-cHeNgYIE03vFTPrTEqm1QPNFGTJMh5');
 
 	$numbers = array(353899689944);
-	$sender = 'Textlocal';
+	$sender = 'Lifestream';
 	$message = 'got message?';
 
 	try {
@@ -64,6 +65,7 @@ else
 	    print_r($result);
 	} catch (Exception $e) {
 	    die('Error: ' . $e->getMessage());
+	}
 	}
 	/*
 	// Authorisation details.
