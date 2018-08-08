@@ -49,7 +49,8 @@ else
 			window.location.href="index.php";
 		</script>
 <?php
-		//Testing SmS
+		
+	if(isset($_POST['Register'])){//Testing SmS
 		
 	require('textlocal.class.php');
 
@@ -64,6 +65,7 @@ else
 	    print_r($result);
 	} catch (Exception $e) {
 	    die('Error: ' . $e->getMessage());
+	}
 	}
 	/*
 	// Authorisation details.
