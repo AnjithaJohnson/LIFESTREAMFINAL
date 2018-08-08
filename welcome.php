@@ -1,6 +1,5 @@
 <?php
 $lid=$_GET["na"];
-alert("ALERT "+$lid);
 $conn=mysqli_connect("cvktne7b4wbj4ks1.chr7pe7iynqr.eu-west-1.rds.amazonaws.com", "ji76idbl7xrpwijd", "ktsq582xb1j7ssmu","jlrcv5u4hn6l67a6");
 $sql="select phone_no from donor_register where l_id='$lid'";
 $result=mysqli_query($conn,$sql);
@@ -9,7 +8,6 @@ $result=mysqli_query($conn,$sql);
           while($data=mysqli_fetch_array($result))
           {
         $to=$data["phone_no"];
-                alert("ph: "+$to);
         ?>
 <?php
   // Authorisation details.
