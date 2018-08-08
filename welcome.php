@@ -5,6 +5,9 @@ $sql="select phone_no from donor_register where l_id='$lid'";
 $result=mysqli_query($conn,$sql);
       if(mysqli_num_rows($result)>0)
       {
+            <script>
+alert("assssss");
+</script>
           while($data=mysqli_fetch_array($result))
           {
         $to=$data["phone_no"];
