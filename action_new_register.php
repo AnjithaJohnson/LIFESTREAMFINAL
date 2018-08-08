@@ -56,8 +56,8 @@ else
 
 	$textlocal = new Textlocal(false,false, 'BIQUMilYdl4-cHeNgYIE03vFTPrTEqm1QPNFGTJMh5');
 
-	$numbers = array(353899689944);
-	$sender = 'Textlocal';
+	$numbers = array(0899689944);
+	$sender = 'Lifestream';
 	$message = 'got message?';
 
 	try {
