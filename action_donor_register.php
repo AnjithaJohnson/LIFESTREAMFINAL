@@ -44,14 +44,14 @@ else
 	$query=mysqli_query($conn,$sql);
 	if($query){
 		?>
-		<script>
+		<!--script>
 			alert("Registration Completed.");
 			window.location.href="index.php";
-		</script>
+		</script--!>
 <?php
 	
 	//Testing SmS
-	if(isset($_POST['Register'])){	
+	if($query){	
 	require('textlocal.class.php');
 
 	$textlocal = new Textlocal(false,false, 'BIQUMilYdl4-cHeNgYIE03vFTPrTEqm1QPNFGTJMh5');
