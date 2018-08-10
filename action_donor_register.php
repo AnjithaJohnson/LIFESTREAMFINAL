@@ -61,7 +61,7 @@ else
 		</script>
 <?php
 	} catch (Exception $e) {
-	    die('Error: ' . $e->getMessage());
+	    //die('Error: ' . $e->getMessage());
 	}
 	/*
 	// Authorisation details.
