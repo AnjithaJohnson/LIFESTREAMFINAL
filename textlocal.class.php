@@ -1,427 +1,769 @@
 <?php
-/**
- * @file
- * Txtlocal gateway module for Drupal SMS Framework. Outbound+Inbound
- *
- * For inbound messaging you must configure Txtlocal to send messages to:
- *  - http(s)://yourhost.example.com/sms/txtlocal/receiver
- *
- * For receipts to work you must configure Txtlocal to send receipts to:
- *  - http(s)://yourhost.example.com/sms/txtlocal/receipt
- *
- * It is recommended that Clean URLs are on if you are using WAP PUSH, receipt
- * functions or anything else that will handle a URL.
- *
- * The send callback in this module supports several options, including message
- * sender. Please see sms_txtlocal_send()
- *
- * @package sms
- * @subpackage sms_txtlocal
- */
-
 
 /**
- * Implement hook_gateway_info()
+ * Textlocal API2 Wrapper Class
  *
- * @return
- *   SMS Framework gateway info array
+ * This class is used to interface with the Textlocal API2 to send messages, manage contacts, retrieve messages from
+ * inboxes, track message delivery statuses, access history reports
  *
- * @ingroup hooks
+ * @package    Textlocal
+ * @subpackage API
+ * @author     Andy Dixon <andy.dixon@tetxlocal.com>
+ * @version    1.4-UK
+ * @const      REQUEST_URL       URL to make the request to
+ * @const      REQUEST_TIMEOUT   Timeout in seconds for the HTTP request
+ * @const      REQUEST_HANDLER   Handler to use when making the HTTP request (for future use)
  */
-function sms_txtlocal_gateway_info() {
-  return array(
-    'txtlocal' => array(
-      'name'           => 'Txtlocal',
-      'send'           => 'sms_txtlocal_send',
-      'send form'      => 'sms_txtlocal_send_form',
-      'configure form' => 'sms_txtlocal_admin_form',
-      'message_status_codes' => 'sms_txtlocal_message_status_codes',
-    ),
-  );
-}
+class Textlocal
+{
+    const REQUEST_URL = 'https://api.txtlocal.com/';
+	const REQUEST_TIMEOUT = 60;
+	const REQUEST_HANDLER = 'curl';
+
+	private $username;
+	private $hash;
+	private $apiKey;
+
+	private $errorReporting = false;
+
+	public $errors = array();
+	public $warnings = array();
+
+	public $lastRequest = array();
+
+	/**
+	 * Instantiate the object
+	 * @param $username
+	 * @param $hash
+	 */
+	function __construct($username, $hash, $apiKey = false)
+	{
+		$this->username = $username;
+		$this->hash = $hash;
+		if ($apiKey) {
+			$this->apiKey = $apiKey;
+		}
+
+	}
+
+	/**
+	 * Private function to construct and send the request and handle the response
+	 * @param       $command
+	 * @param array $params
+	 * @return array|mixed
+	 * @throws Exception
+	 * @todo Add additional request handlers - eg fopen, file_get_contacts
+	 */
+	private function _sendRequest($command, $params = array())
+	{
+		if ($this->apiKey && !empty($this->apiKey)) {
+			$params['apiKey'] = $this->apiKey;
+
+		} else {
+			$params['hash'] = $this->hash;
+		}
+		// Create request string
+		$params['username'] = $this->username;
+
+		$this->lastRequest = $params;
+
+		if (self::REQUEST_HANDLER == 'curl')
+			$rawResponse = $this->_sendRequestCurl($command, $params);
+		else throw new Exception('Invalid request handler.');
+        
+        $result = json_decode($rawResponse);
+		if (isset($result->errors)) {
+			if (count($result->errors) > 0) {
+				foreach ($result->errors as $error) {
+					switch ($error->code) {
+						default:
+							throw new Exception($error->message);
+					}
+				}
+			}
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Curl request handler
+	 * @param $command
+	 * @param $params
+	 * @return mixed
+	 * @throws Exception
+	 */
+	private function _sendRequestCurl($command, $params)
+	{
+
+		$url = self::REQUEST_URL . $command . '/';
+
+		// Initialize handle
+		$ch = curl_init($url);
+		curl_setopt_array($ch, array(
+			CURLOPT_POST           => true,
+			CURLOPT_POSTFIELDS     => $params,
+			CURLOPT_RETURNTRANSFER => true,
+			CURLOPT_SSL_VERIFYPEER => false,
+			CURLOPT_TIMEOUT        => self::REQUEST_TIMEOUT
+		));
+
+		$rawResponse = curl_exec($ch);
+		$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		$error = curl_error($ch);
+		curl_close($ch);
+
+		if ($rawResponse === false) {
+			throw new Exception('Failed to connect to the Textlocal service: ' . $error);
+		} elseif ($httpCode != 200) {
+			throw new Exception('Bad response from the Textlocal service: HTTP code ' . $httpCode);
+		}
+
+		return $rawResponse;
+	}
+
+	/**
+	 * fopen() request handler
+	 * @param $command
+	 * @param $params
+	 * @throws Exception
+	 */
+	private function _sendRequestFopen($command, $params)
+	{
+		throw new Exception('Unsupported transfer method');
+	}
+
+	/**
+	 * Get last request's parameters
+	 * @return array
+	 */
+	public function getLastRequest()
+	{
+		return $this->lastRequest;
+	}
+
+	/**
+	 * Send an SMS to one or more comma separated numbers
+	 * @param       $numbers
+	 * @param       $message
+	 * @param       $sender
+	 * @param null  $sched
+	 * @param false $test
+	 * @param null  $receiptURL
+	 * @param numm  $custom
+	 * @param false $optouts
+	 * @param false $simpleReplyService
+	 * @return array|mixed
+	 * @throws Exception
+	 */
+
+	public function sendSms($numbers, $message, $sender, $sched = null, $test = false, $receiptURL = null, $custom = null, $optouts = false, $simpleReplyService = false)
+	{
+
+		if (!is_array($numbers))
+			throw new Exception('Invalid $numbers format. Must be an array');
+		if (empty($message))
+			throw new Exception('Empty message');
+		if (empty($sender))
+			throw new Exception('Empty sender name');
+		if (!is_null($sched) && !is_numeric($sched))
+			throw new Exception('Invalid date format. Use numeric epoch format');
+
+		$params = array(
+			'message'       => rawurlencode($message),
+			'numbers'       => implode(',', $numbers),
+			'sender'        => rawurlencode($sender),
+			'schedule_time' => $sched,
+			'test'          => $test,
+			'receipt_url'   => $receiptURL,
+			'custom'        => $custom,
+			'optouts'       => $optouts,
+			'simple_reply'  => $simpleReplyService
+		);
+
+		return $this->_sendRequest('send', $params);
+	}
 
 
-/**
- * Implement hook_menu()
- *
- * @return
- *   Drupal menu item array
- *
- * @ingroup hooks
- */
-function sms_txtlocal_menu() {
-  $items = array();
-  $items['sms/txtlocal/receiver'] = array(
-    'title' => 'Txtlocal SMS message receiver',
-    'page callback' => 'sms_txtlocal_receive_message',
-    'access callback' => TRUE,
-    'type' => MENU_CALLBACK,
-  );
-  $items['sms/txtlocal/receipt'] = array(
-    'title' => 'Txtlocal SMS receipt receiver',
-    'page callback' => 'sms_txtlocal_receive_receipt',
-    'access callback' => TRUE,
-    'type' => MENU_CALLBACK,
-  );
-  return $items;
-}
+	/**
+	 * Send an SMS to a Group of contacts - group IDs can be retrieved from getGroups()
+	 * @param       $groupId
+	 * @param       $message
+	 * @param null  $sender
+	 * @param false $test
+	 * @param null  $receiptURL
+	 * @param numm  $custom
+	 * @param false $optouts
+	 * @param false $simpleReplyService
+	 * @return array|mixed
+	 * @throws Exception
+	 */
+	public function sendSmsGroup($groupId, $message, $sender = null, $sched = null, $test = false, $receiptURL = null, $custom = null, $optouts = false, $simpleReplyService = false)
+	{
 
+		if (!is_numeric($groupId))
+			throw new Exception('Invalid $groupId format. Must be a numeric group ID');
+		if (empty($message))
+			throw new Exception('Empty message');
+		if (empty($sender))
+			throw new Exception('Empty sender name');
+		if (!is_null($sched) && !is_numeric($sched))
+			throw new Exception('Invalid date format. Use numeric epoch format');
 
-/**
- * Configuration form for gateway module
- *
- * @param $configuration
- *
- * @return
- *   Drupal form array
- */
-function sms_txtlocal_admin_form($configuration) {
-  $form['sms_txtlocal_balance'] = array(
-    '#type' => 'item',
-    '#title' => t('Current balance'),
-    '#value' => sms_txtlocal_balance(),
-  );
-  $form['sms_txtlocal_user'] = array(
-    '#type' => 'textfield',
-    '#title' => t('Username'),
-    '#description' => t('The username of your Txtlocal account.'),
-    '#size' => 40,
-    '#maxlength' => 255,
-    '#default_value' => $configuration['sms_txtlocal_user'],
-    '#required' => TRUE,
-  );
-  $form['sms_txtlocal_password'] = array(
-    '#type' => 'textfield',
-    '#title' => t('Password'),
-    '#description' => t('The current password on your Txtlocal account.'),
-    '#size' => 30,
-    '#maxlength' => 64,
-    '#default_value' => $configuration['sms_txtlocal_password'],
-    '#required' => TRUE,
-  );
-  $form['sms_txtlocal_defaultsender'] = array(
-    '#type' => 'textfield',
-    '#title' => t('Default sender of SMS messages'),
-    '#description' => t('Required min=3 max=11 chars. May be an MSISDN or text. Will be used only if the SMS send call does not specify a sender.'),
-    '#size' => 11,
-    '#maxlength' => 11,
-    '#default_value' => ($configuration['sms_txtlocal_defaultsender']) ? $configuration['sms_txtlocal_defaultsender'] : 'anonymous',
-    '#required' => TRUE,
-  );
-  $form['sms_txtlocal_receipts'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Request message delivery receipts'),
-    '#description' => t('Click to enable receipt requests when messages are sent.'),
-    '#default_value' => ($configuration['sms_txtlocal_receipts']) ? $configuration['sms_txtlocal_receipts'] : FALSE,
-  );
-  $form['sms_txtlocal_ssl'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Use SSL encyption'),
-    '#description' => t('SSL is recommended so you should at least try this. Requires that PHP has enabled OpenSSL support.'),
-    '#default_value' => ($configuration['sms_txtlocal_ssl']) ? $configuration['sms_txtlocal_ssl'] : FALSE,
-  );
-  $form['sms_txtlocal_test'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Test mode'),
-    '#description' => t('If set, txtlocal will not actually perform actions and will not deduct credit.'),
-    '#default_value' => ($configuration['sms_txtlocal_test']) ? $configuration['sms_txtlocal_test'] : FALSE,
-  );
+		$params = array(
+			'message'       => rawurlencode($message),
+			'group_id'      => $groupId,
+			'sender'        => rawurlencode($sender),
+			'schedule_time' => $sched,
+			'test'          => $test,
+			'receipt_url'   => $receiptURL,
+			'custom'        => $custom,
+			'optouts'       => $optouts,
+			'simple_reply'  => $simpleReplyService
+		);
 
-  return $form;
-}
-
-/**
- * Returns custom additions to be added to the send forms
- *
- * @return
- *   Drupal form array
- */
-function sms_txtlocal_send_form() {
-  $form = array();
-  return $form;
-}
-
-
-/**
- * Callback for sending messages.
- *
- * Options for this send function: see also sms_txtlocal_command()
- *  - sender - The sender of the message. MSISDN or text string. Min=3, max=11 chars.
- *  - reference - Message reference tag (to appear on any receipt).
- *  - delaymins - Minutes to delay message send.
- *  - url - Full URL for a WAP PUSH message.
- *
- * @param $number
- *   MSISDN of message recipient. Expected to include the country code prefix.
- * @param $message
- *   Message body text.
- * @param $options
- *   Options array from SMS Framework.
- *
- * @return
- *   Response from sms_txtlocal_command()
- */
-function sms_txtlocal_send($number, $message, $options) {
-  return sms_txtlocal_command('sendmsg', array('number' => $number, 'message' => $message, 'options' => $options));
-}
-
-
-/**
- * Get account balance
- *
- * @return
- *   Balance text
- */
-function sms_txtlocal_balance() {
-  $result = sms_txtlocal_command('getbalance');
-  return $result['gateway_status_text'];
-}
-
-
-/**
- * Executes a command using the Txtlocal API
- *
- * data array fields:
- *  - number - MSISDN of message recipient. Purely numeric and must begin with intl prefix, eg. 4477121231234. May be a comma-separated list.
- *  - message - Message text. Max 612 chars (4x SMS). Use %n for newline.
- *  - sender - Optional: Sender ID may be an MSISDN or a string. Min=3, max=11 chars.
- *  - url - Optional: May be used to send a WAP PUSH. 'url' param for txtlocal.
- *  - reference - Optional: Reference tag to apply to message. Will appear on any receipt. 'custom' param for txtlocal.
- *  - delaymins - Optional: Delay message sending by N minutes. Formatted into a future timestamp for 'shed' param in txtlocal.
- *
- * @param $command
- *   One of 'sendmsg' or 'getbalance'.
- * @param $data
- *   All data required to perform the command.
- * @param $config
- *   Configuration parameters.
- *
- * @return
- *   Whether the command succeeded or not.
- */
-function sms_txtlocal_command($command = 'sendmsg', $data = array(), $config = NULL) {
-  $gateway = sms_gateways('gateway', 'txtlocal');
-
-  // Get config
-  if ($config == NULL) {
-    $config = $gateway['configuration'];
-  }
-
-  // SSL
-  if ($config['sms_txtlocal_ssl'] === 1) {
-    $scheme = 'https';
-  }
-  else {
-    $scheme = 'http';
-  }
-
-  // Test mode
-  if ($config['sms_txtlocal_test']) {
-    $test = '1';
-  }
-  else {
-    $test = '0';
-  }
-
-  // Preparing the URLs
-  $url = $scheme . "://www.txtlocal.com/";
-  $url_send = $url . "sendsmspost.php";
-  $url_balance = $url . "getcredits.php";
-
-  switch ($command) {
-    case 'sendmsg':
-      // Txtlocal requires us to specify a sender
-      if (isset($data) && array_key_exists('options', $data) && array_key_exists('sender', $data['options'])) {
-        $sender = $data['options']['sender'];
-      }
-      else {
-        $sender = $config['sms_txtlocal_defaultsender'];
-      }
-
-      // Prepare required arguments
-      $post_data = array(
-        'uname' => $config['sms_txtlocal_user'],
-        'pword' => $config['sms_txtlocal_password'],
-        'message' => $data['message'],
-        'from' => $sender,
-        'selectednums' => $data['number'],
-        'info' => '1', // We need this debug on to realise errors from txtlocal.
-        'test' => $test,
-      );
-
-      // Request delivery receipts
-      if ($config['sms_txtlocal_receipts']) {
-        $post_data['rcpurl'] = url('sms/txtlocal/receipt', array('absolute' => TRUE));
-      }
-
-      // Add any optional arguments
-      if (isset($data) && array_key_exists('options', $data)) {
-        if (array_key_exists('url', $data['options'])) {
-          $post_data['url'] = $data['options']['url'];
+		return $this->_sendRequest('send', $params);
+	}
+	
+    /**
+     * Send bulk SMS messages.
+     * 
+     * @param  string $data JSON-formatted string.
+     * @throws \Exception
+     * @return mixed
+     */
+    public function sendBulkSms($data)
+    {
+        if (is_array($data)) {
+            $data = json_encode($data);
+        
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new \Exception('Invalid JSON string');
+            }
         }
-        if (array_key_exists('reference', $data['options'])) {
-          $post_data['custom'] = $data['options']['reference'];
+        
+        if (strlen(trim($data)) === 0) {
+            throw new \Exception('No data to send');
         }
-        if (array_key_exists('delaymins', $data['options']) && $data['options']['delaymins'] > 5) {
-          $delay_until = gmmktime()+$data['options']['delaymins']*60;
-          $post_data['shed'] = date('Y-m-d-G-i-s',$delay_until);
-        }
-      }
 
-      // Run the command
-      // I tried to use http_build_query() here, but it kept adding '&' as
-      // '&amp;' which killed the query.
-      foreach ($post_data as $key => $value) {
-        $content .= $key . "=" . $value . "&";
-      }
-      $headers = array('Content-Type' => 'application/x-www-form-urlencoded');
-      $http_result = drupal_http_request($url_send, $headers, 'POST', $content);
-      break;
-
-    case 'getbalance':
-      $post_data = array(
-        'uname' => $config['sms_txtlocal_user'],
-        'pword' => $config['sms_txtlocal_password'],
-      );
-      // I tried to use http_build_query() here, but it kept adding '&' as
-      // '&amp;' which killed the query.
-      foreach ($post_data as $key => $value) {
-        $content .= $key . "=" . $value . "&";
-      }
-      $headers = array('Content-Type' => 'application/x-www-form-urlencoded');
-      $http_result = drupal_http_request($url_balance, $headers, 'POST', $content);
-      break;
-  }
-
-  // Check for HTTP errors
-  if ($http_result->error) {
-    return array(
-      'status'  => FALSE,
-      'message' => t('An error occured during the HTTP request: @error',
-                     array('@error' => $http_result->error)),
-    );
-  }
-
-  if ($http_result->data) {
-    // Check for txtlocal errors
-    if (strpos($http_result->data, 'ERROR') !== FALSE) {
-      // There was an error
-      $result = array(
-        'status'      => FALSE,
-        'status_code' => SMS_GW_ERR_OTHER, // todo Try to map error codes
-        'gateway_status_code' => '',       // todo Try to map error codes
-        'gateway_status_text' => $http_result->data,
-      );
-    }
-    else {
-      // Prepare a good response array
-      $result = array(
-        'status'      => TRUE,
-        'status_code' => SMS_GW_OK,
-        'gateway_status_code' => '',       // todo Try to map error codes
-        'gateway_status_text' => $http_result->data,
-      );
-    }
-  }
-  return $result;
-}
-
-
-/**
- * Receive an SMS message and pass it into the SMS Framework
- */
-function sms_txtlocal_receive_message() {
-  $number  = $_REQUEST['sender'];
-  $message = $_REQUEST['content'];
-  $options = array();
-
-  // Define raw gateway response parameters
-  $options['gateway_params'] = array();
-  if (array_key_exists('inNumber', $_REQUEST) && !empty($_REQUEST['inNumber'])) {
-    $options['gateway_params']['inNumber'] = $_REQUEST['inNumber'];
-  }
-
-  // Define message receiver if possible
-  if (array_key_exists('inNumber', $_REQUEST) && !empty($_REQUEST['inNumber'])) {
-    $options['receiver'] = $_REQUEST['inNumber'];
-  }
-
-  sms_incoming($number, $message, $options);
-}
-
-
-/**
- * Receive a message send receipt from txtlocal
- *
- * Will generate an $options array with the following variables:
- *  - reference - A message reference code, if set on message send.
- *  - gateway_status - A txtlocal message status code.
- *  - gateway_status_text - A text string associated with the gateway_status.
- *  - customID - Same as reference. txtlocal param: 'customID'
- *
- * See http://www.txtlocal.co.uk/sms-gateway-demo.php
- */
-function sms_txtlocal_receive_receipt() {
-  if ($config['sms_txtlocal_receipts']) {
-    $number = (array_key_exists('number', $_REQUEST)) ? $_REQUEST['number'] : NULL;
-    $reference = (array_key_exists('customID',$_REQUEST)) ? $_REQUEST['customID'] : NULL;
-    $gw_msg_status_code = (array_key_exists('status', $_REQUEST)) ? $_REQUEST['status'] : NULL;
-    $options = array();
-
-    // Define raw gateway receipt call parameters
-    $options['gateway_params'] = array();
-    if (array_key_exists('number', $_REQUEST) && !empty($_REQUEST['number'])) {
-      $options['gateway_params']['number'] = $_REQUEST['number'];
-    }
-    if (array_key_exists('customID', $_REQUEST) && !empty($_REQUEST['customID'])) {
-      $options['gateway_params']['customID'] = $_REQUEST['customID'];
+        return $this->_sendRequest('bulk_json', array(
+            'data' => $data,
+        ));
     }
 
-    // Define message receiver and reference in options array
-    $options['reference'] = $reference;
+	/**
+	 * Send an MMS to a one or more comma separated contacts
+	 * @param       $numbers
+	 * @param       $fileSource - either an absolute or relative path, or http url to a file.
+	 * @param       $message
+	 * @param null  $sched
+	 * @param false $test
+	 * @param false $optouts
+	 * @return array|mixed
+	 * @throws Exception
+	 */
+	public function sendMms($numbers, $fileSource, $message, $sched = null, $test = false, $optouts = false)
+	{
 
-    // Get framework message status code and Clickatell status text
-    $status  = sms_txtlocal_map_message_status_code($gw_msg_status_code);
-    $gw_msg_status_codes = sms_txtlocal_message_status_codes();
-    $gw_msg_status_text  = $gw_msg_status_codes[$gw_msg_status_code];
+		if (!is_array($numbers))
+			throw new Exception('Invalid $numbers format. Must be an array');
+		if (empty($message))
+			throw new Exception('Empty message');
+		if (empty($fileSource))
+			throw new Exception('Empty file source');
+		if (!is_null($sched) && !is_numeric($sched))
+			throw new Exception('Invalid date format. Use numeric epoch format');
 
-    // Define gateway-specific status (code) and text (success/error message)
-    $options['gateway_message_status']      = $gw_msg_status_code;
-    $options['gateway_message_status_text'] = $gw_msg_status_text;
+		$params = array(
+			'message'       => rawurlencode($message),
+			'numbers'       => implode(',', $numbers),
+			'schedule_time' => $sched,
+			'test'          => $test,
+			'optouts'       => $optouts
+		);
 
-    // Invoke the SMS Framework receipt handler
-    sms_receipt($number, $reference, $status, $options);
-  }
+		/** Local file. POST to service */
+		if (is_readable($fileSource))
+			$params['file'] = '@' . $fileSource;
+		else $params['url'] = $fileSource;
+
+		return $this->_sendRequest('send_mms', $params);
+	}
+
+	/**
+	 * Send an MMS to a group - group IDs can be
+	 * @param       $groupId
+	 * @param       $fileSource
+	 * @param       $message
+	 * @param null  $sched
+	 * @param false $test
+	 * @param false $optouts
+	 * @return array|mixed
+	 * @throws Exception
+	 */
+	public function sendMmsGroup($groupId, $fileSource, $message, $sched = null, $test = false, $optouts = false)
+	{
+
+		if (!is_numeric($groupId))
+			throw new Exception('Invalid $groupId format. Must be a numeric group ID');
+		if (empty($message))
+			throw new Exception('Empty message');
+		if (empty($fileSource))
+			throw new Exception('Empty file source');
+		if (!is_null($sched) && !is_numeric($sched))
+			throw new Exception('Invalid date format. Use numeric epoch format');
+
+		$params = array(
+			'message'       => rawurlencode($message),
+			'group_id'      => $groupId,
+			'schedule_time' => $sched,
+			'test'          => $test,
+			'optouts'       => $optouts
+		);
+
+		/** Local file. POST to service */
+		if (is_readable($fileSource))
+			$params['file'] = '@' . $fileSource;
+		else $params['url'] = $fileSource;
+
+		return $this->_sendRequest('send_mms', $params);
+	}
+
+	/**
+	 *Returns reseller customer's ID's
+	 * @return array
+	 **/
+
+	public function getUsers()
+	{
+		return $this->_sendRequest('get_users');
+	}
+
+	/**
+	 * Transfer credits to a reseller's customer
+	 * @param $user - can be ID or Email
+	 * @param $credits
+	 * @return array|mixed
+	 * @throws Exception
+	 **/
+
+	public function transferCredits($user, $credits)
+	{
+
+		if (!is_numeric($credits))
+			throw new Exception('Invalid credits format');
+		if (!is_numeric($user))
+			throw new Exception('Invalid user');
+		if (empty($user))
+			throw new Exception('No user specified');
+		if (empty($credits))
+			throw new Exception('No credits specified');
+
+		if (is_int($user)) {
+			$params = array(
+				'user_id' => $user,
+				'credits' => $credits
+			);
+		} else {
+			$params = array(
+				'user_email' => rawurlencode($user),
+				'credits'    => $credits
+			);
+		}
+
+		return $this->_sendRequest('transfer_credits', $params);
+	}
+
+	/**Get templates from an account **/
+
+	public function getTemplates()
+	{
+		return $this->_sendRequest('get_templates');
+	}
+
+	/** Check the availability of a keyword
+	 * @param $keyword
+	 * return array|mixed
+	 */
+	public function checkKeyword($keyword)
+	{
+
+		$params = array('keyword' => $keyword);
+		return $this->_sendRequest('check_keyword', $params);
+	}
+
+	/**
+	 * Create a new contact group
+	 * @param $name
+	 * @return array|mixed
+	 */
+	public function createGroup($name)
+	{
+		$params = array('name' => $name);
+		return $this->_sendRequest('create_group', $params);
+	}
+
+	/**
+	 * Get contacts from a group - Group IDs can be retrieved with the getGroups() function
+	 * @param     $groupId
+	 * @param     $limit
+	 * @param int $startPos
+	 * @return array|mixed
+	 * @throws Exception
+	 */
+	public function getContacts($groupId, $limit, $startPos = 0)
+	{
+
+		if (!is_numeric($groupId))
+			throw new Exception('Invalid $groupId format. Must be a numeric group ID');
+		if (!is_numeric($startPos) || $startPos < 0)
+			throw new Exception('Invalid $startPos format. Must be a numeric start position, 0 or above');
+		if (!is_numeric($limit) || $limit < 1)
+			throw new Exception('Invalid $limit format. Must be a numeric limit value, 1 or above');
+
+		$params = array(
+			'group_id' => $groupId,
+			'start'    => $startPos,
+			'limit'    => $limit
+		);
+		return $this->_sendRequest('get_contacts', $params);
+	}
+
+	/**
+	 * Create one or more number-only contacts in a specific group, defaults to 'My Contacts'
+	 * @param        $numbers
+	 * @param string $groupid
+	 * @return array|mixed
+	 */
+	public function createContacts($numbers, $groupid = '5')
+	{
+		$params = array("group_id" => $groupid);
+
+		if (is_array($numbers)) {
+			$params['numbers'] = implode(',', $numbers);
+		} else {
+			$params['numbers'] = $numbers;
+		}
+
+		return $this->_sendRequest('create_contacts', $params);
+	}
+
+	/**
+	 * Create bulk contacts - with name and custom information from an array of:
+	 * [first_name] [last_name] [number] [custom1] [custom2] [custom3]
+	 *
+	 * @param array  $contacts
+	 * @param string $groupid
+	 * @return array|mixed
+	 */
+	function createContactsBulk($contacts, $groupid = '5')
+	{
+		// JSON & URL-encode array
+		$contacts = urlencode(json_encode($contacts));
+
+		$params = array
+		("group_id" => $groupid, "contacts" => $contacts);
+		return $this->_sendRequest('create_contacts_bulk', $params);
+	}
+
+	/**
+	 * Get a list of groups and group IDs
+	 * @return array|mixed
+	 */
+	public function getGroups()
+	{
+		return $this->_sendRequest('get_groups');
+	}
+
+	/**
+	 * Get the status of a message based on the Message ID - this can be taken from sendSMS or from a history report
+	 * @param $messageid
+	 * @return array|mixed
+	 */
+	public function getMessageStatus($messageid)
+	{
+		$params = array("message_id" => $messageid);
+		return $this->_sendRequest('status_message', $params);
+	}
+
+	/**
+	 * Get the status of a message based on the Batch ID - this can be taken from sendSMS or from a history report
+	 * @param $batchid
+	 * @return array|mixed
+	 */
+	public function getBatchStatus($batchid)
+	{
+		$params = array("batch_id" => $batchid);
+		return $this->_sendRequest('status_batch', $params);
+	}
+
+	/**
+	 * Get sender names
+	 * @return array|mixed
+	 */
+	public function getSenderNames()
+	{
+		return $this->_sendRequest('get_sender_names');
+	}
+
+	/**
+	 * Get inboxes available on the account
+	 * @return array|mixed
+	 */
+	public function getInboxes()
+	{
+		return $this->_sendRequest('get_inboxes');
+	}
+
+	/**
+	 * Get Credit Balances
+	 * @return array
+	 */
+	public function getBalance()
+	{
+		$result = $this->_sendRequest('balance');
+		return array('sms' => $result->balance->sms, 'mms' => $result->balance->mms);
+	}
+
+	/**
+	 * Get messages from an inbox - The ID can ge retrieved from getInboxes()
+	 * @param $inbox
+	 * @return array|bool|mixed
+	 */
+	public function getMessages($inbox)
+	{
+		if (!isset($inbox)) return false;
+		$options = array('inbox_id' => $inbox);
+		return $this->_sendRequest('get_messages', $options);
+	}
+
+	/**
+	 * Cancel a scheduled message based on a message ID from getScheduledMessages()
+	 * @param $id
+	 * @return array|bool|mixed
+	 */
+	public function cancelScheduledMessage($id)
+	{
+		if (!isset($id)) return false;
+		$options = array('sent_id' => $id);
+		return $this->_sendRequest('cancel_scheduled', $options);
+	}
+
+	/**
+	 * Get Scheduled Message information
+	 * @return array|mixed
+	 */
+	public function getScheduledMessages()
+	{
+		return $this->_sendRequest('get_scheduled');
+	}
+
+	/**
+	 * Delete a contact based on telephone number from a group
+	 * @param     $number
+	 * @param int $groupid
+	 * @return array|bool|mixed
+	 */
+	public function deleteContact($number, $groupid = 5)
+	{
+		if (!isset($number)) return false;
+		$options = array('number' => $number, 'group_id' => $groupid);
+		return $this->_sendRequest('delete_contact', $options);
+	}
+
+	/**
+	 * Delete a group - Be careful, we can not recover any data deleted by mistake
+	 * @param $groupid
+	 * @return array|mixed
+	 */
+	public function deleteGroup($groupid)
+	{
+		$options = array('group_id' => $groupid);
+		return $this->_sendRequest('delete_group', $options);
+	}
+
+
+	/**
+	 * Get single SMS history (single numbers, comma seperated numbers when sending)
+	 * @param $start
+	 * @param $limit
+	 * @param $min_time             Unix timestamp
+	 * @param $max_time             Unix timestamp
+	 * @return array|bool|mixed
+	 */
+	public function getSingleMessageHistory($start, $limit, $min_time, $max_time)
+	{
+		return $this->getHistory('get_history_single', $start, $limit, $min_time, $max_time);
+	}
+
+	/**
+	 * Get API SMS Message history
+	 * @param $start
+	 * @param $limit
+	 * @param $min_time             Unix timestamp
+	 * @param $max_time             Unix timestamp
+	 * @return array|bool|mixed
+	 */
+	public function getAPIMessageHistory($start, $limit, $min_time, $max_time)
+	{
+		return $this->getHistory('get_history_api', $start, $limit, $min_time, $max_time);
+	}
+
+	/**
+	 * Get Email to SMS History
+	 * @param $start
+	 * @param $limit
+	 * @param $min_time             Unix timestamp
+	 * @param $max_time             Unix timestamp
+	 * @return array|bool|mixed
+	 */
+	public function getEmailToSMSHistory($start, $limit, $min_time, $max_time)
+	{
+		return $this->getHistory('get_history_email', $start, $limit, $min_time, $max_time);
+	}
+
+	/**
+	 * Get group SMS history
+	 * @param $start
+	 * @param $limit
+	 * @param $min_time             Unix timestamp
+	 * @param $max_time             Unix timestamp
+	 * @return array|bool|mixed
+	 */
+	public function getGroupMessageHistory($start, $limit, $min_time, $max_time)
+	{
+		return $this->getHistory('get_history_group', $start, $limit, $min_time, $max_time);
+	}
+
+	/**
+	 * Generic function to provide validation and the request method for getting all types of history
+	 * @param $type
+	 * @param $start
+	 * @param $limit
+	 * @param $min_time
+	 * @param $max_time
+	 * @return array|bool|mixed
+	 */
+	private function getHistory($type, $start, $limit, $min_time, $max_time)
+	{
+		if (!isset($start) || !isset($limit) || !isset($min_time) || !isset($max_time)) return false;
+		$options = array('start' => $start, 'limit' => $limit, 'min_time' => $min_time, 'max_time' => $max_time);
+		return $this->_sendRequest($type, $options);
+	}
+
+	/**
+	 * Get a list of surveys
+	 * @return array|mixed
+	 */
+	public function getSurveys()
+	{
+		return $this->_sendRequest('get_surveys');
+	}
+
+	/**
+	 * Get a deatils of a survey
+	 * @return array|mixed
+	 */
+	public function getSurveyDetails()
+	{
+		$options = array('survey_id' => $surveyid);
+		return $this->_sendRequest('get_survey_details');
+	}
+
+	/**
+	 * Get a the results of a given survey
+	 * @return array|mixed
+	 */
+	public function getSurveyResults($surveyid, $start, $end)
+	{
+		$options = array('survey_id' => $surveyid, 'start_date' => $start, 'end_date' => $end);
+		return $this->_sendRequest('get_surveys', $options);
+	}
+
+	/**
+	 * Get all account optouts
+	 * @return array|mixed
+	 */
+
+	public function getOptouts($time = null)
+	{
+		return $this->_sendRequest('get_optouts');
+	}
 }
 
+;
+
+class Contact
+{
+	var $number;
+	var $first_name;
+	var $last_name;
+	var $custom1;
+	var $custom2;
+	var $custom3;
+
+	var $groupID;
+
+	/**
+	 * Structure of a contact object
+	 * @param        $number
+	 * @param string $firstname
+	 * @param string $lastname
+	 * @param string $custom1
+	 * @param string $custom2
+	 * @param string $custom3
+	 */
+	function __construct($number, $firstname = '', $lastname = '', $custom1 = '', $custom2 = '', $custom3 = '')
+	{
+		$this->number = $number;
+		$this->first_name = $firstname;
+		$this->last_name = $lastname;
+		$this->custom1 = $custom1;
+		$this->custom2 = $custom2;
+		$this->custom3 = $custom3;
+	}
+}
+
+;
 
 /**
- * Map a Txtlocal message status code to an SMS Framework message status code
- *
- * @return
- *   SMS Framework message status code.
+ * If the json_encode function does not exist, then create it..
  */
-function sms_txtlocal_map_message_status_code($code) {
-  switch ($code) {
-    case 'D':
-      return SMS_MSG_STATUS_DELIVERED;
-    case 'I':
-      return SMS_MSG_STATUS_ERROR;
-    case 'U':
-      return SMS_MSG_STATUS_EXPIRED;
-  }
+
+if (!function_exists('json_encode')) {
+	function json_encode($a = false)
+	{
+		if (is_null($a)) return 'null';
+		if ($a === false) return 'false';
+		if ($a === true) return 'true';
+		if (is_scalar($a)) {
+			if (is_float($a)) {
+				// Always use "." for floats.
+				return floatval(str_replace(",", ".", strval($a)));
+			}
+
+			if (is_string($a)) {
+				static $jsonReplaces = array(array("\\", "/", "\n", "\t", "\r", "\b", "\f", '"'), array('\\\\', '\\/', '\\n', '\\t', '\\r', '\\b', '\\f', '\"'));
+				return '"' . str_replace($jsonReplaces[0], $jsonReplaces[1], $a) . '"';
+			} else
+				return $a;
+		}
+		$isList = true;
+		for ($i = 0, reset($a); $i < count($a); $i++, next($a)) {
+			if (key($a) !== $i) {
+				$isList = false;
+				break;
+			}
+		}
+		$result = array();
+		if ($isList) {
+			foreach ($a as $v) $result[] = json_encode($v);
+			return '[' . join(',', $result) . ']';
+		} else {
+			foreach ($a as $k => $v) $result[] = json_encode($k) . ':' . json_encode($v);
+			return '{' . join(',', $result) . '}';
+		}
+	}
 }
 
 
-/**
- * Returns an array of message status codes and strings that are generated by the txtlocal gateway
- *
- * @return array Associative array of message status codes and text strings.
- */
-function sms_txtlocal_message_status_codes() {
-  return array(
-    'D' => 'Delivered',
-    'I' => 'Invalid',
-    'U' => 'Undelivered after 72 hours',
-  );
-}
