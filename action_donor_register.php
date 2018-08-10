@@ -46,17 +46,22 @@ else
 	//Testing SmS	
 	require('textlocal.class.php');
 
-	$textlocal = new Textlocal(false,false, 'ItBTMeU17kU-hYvZyA3pBNDRQhlbAo1yo4zA6zcyeX');
+	$textlocal = new Textlocal(false,false, 'BIQUMilYdl4-cHeNgYIE03vFTPrTEqm1QPNFGTJMh5');
 
-	$numbers = array(9048334953);
+	$numbers = array(353899689944);
 	$sender = 'Lifestream';
-	$message = 'got message?';
+	$message = 'Welcome to LifeStream';
 
 	try {
 	    $result = $textlocal->sendSms($numbers, $message, $sender);
-	    print_r($result);
+	    ?>
+		<script>
+			alert("Registration Completed.");
+			window.location.href="index.php";
+		</script>
+<?php
 	} catch (Exception $e) {
-	    die('Error: ' . $e->getMessage());
+	   // die('Error: ' . $e->getMessage());
 	}
 	/*
 	// Authorisation details.
