@@ -48,7 +48,7 @@ else
 
 	$textlocal = new Textlocal(false,false, 'BIQUMilYdl4-cHeNgYIE03vFTPrTEqm1QPNFGTJMh5');
 
-	$numbers = array(353899689944);
+	$numbers = array($phone_no);
 	$sender = 'Lifestream';
 	$message = 'Welcome to LifeStream';
 
@@ -61,7 +61,7 @@ else
 		</script>
 <?php
 	} catch (Exception $e) {
-	   // die('Error: ' . $e->getMessage());
+	    die('Error: ' . $e->getMessage());
 	}
 	/*
 	// Authorisation details.
