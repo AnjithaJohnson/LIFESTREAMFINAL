@@ -14,14 +14,13 @@ require('textlocal.class.php');
 
 $textlocal = new Textlocal(false,false, 'BIQUMilYdl4-cHeNgYIE03vFTPrTEqm1QPNFGTJMh5');
 
-$numbers = array(353899689944);
+$numbers = array($to);
 $sender = 'LifeStream';
 $message = 'HardCoded Msg';
 try {
-   // $result = $textlocal->sendSms($numbers, $message, $sender);
+    $result = $textlocal->sendSms($numbers, $message, $sender);
     ?>
 		<script>
-			alert("phone: "+<?php echo $to?>);
 			window.location.href="notification.php";
 		</script>
     <?php
