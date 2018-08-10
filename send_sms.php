@@ -21,7 +21,7 @@ try {
    // $result = $textlocal->sendSms($numbers, $message, $sender);
     ?>
 		<script>
-			alert("phone: "+$to);
+			alert("phone: "+<?php echo $to?>);
 			window.location.href="notification.php";
 		</script>
     <?php
