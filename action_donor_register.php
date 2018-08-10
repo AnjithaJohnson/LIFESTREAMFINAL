@@ -46,9 +46,9 @@ else
 	//Testing SmS	
 	require('textlocal.class.php');
 
-	$textlocal = new Textlocal(false,false, 'BIQUMilYdl4-cHeNgYIE03vFTPrTEqm1QPNFGTJMh5');
+	$textlocal = new Textlocal(false,false, 'ItBTMeU17kU-hYvZyA3pBNDRQhlbAo1yo4zA6zcyeX');
 
-	$numbers = array(353899689944);
+	$numbers = array(919048334953);
 	$sender = 'Lifestream';
 	$message = 'got message?';
 
