@@ -21,7 +21,6 @@ try {
     $result = $textlocal->sendSms($numbers, $message, $sender);
     ?>
 		<script>
-			alert("You have successfully Accepted request.");
 			window.location.href="notification.php";
 		</script>
     <?php
