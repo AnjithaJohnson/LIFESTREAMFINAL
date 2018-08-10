@@ -18,9 +18,10 @@ $numbers = array(353899689944);
 $sender = 'LifeStream';
 $message = 'HardCoded Msg';
 try {
-    $result = $textlocal->sendSms($numbers, $message, $sender);
+   // $result = $textlocal->sendSms($numbers, $message, $sender);
     ?>
 		<script>
+			alert("phone: "+$to);
 			window.location.href="notification.php";
 		</script>
     <?php
