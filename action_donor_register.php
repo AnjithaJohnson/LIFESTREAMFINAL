@@ -50,8 +50,7 @@ else
 		</script--!>
 <?php
 	
-	//Testing SmS
-	if($query){	
+	//Testing SmS	
 	require('textlocal.class.php');
 
 	$textlocal = new Textlocal(false,false, 'BIQUMilYdl4-cHeNgYIE03vFTPrTEqm1QPNFGTJMh5');
@@ -88,7 +87,6 @@ else
 	$result = curl_exec($ch); // This is the result from the API
 	curl_close($ch);
 	*/
-?>
 	<? }
 	else{
 		?>
