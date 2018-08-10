@@ -16,7 +16,7 @@ $textlocal = new Textlocal(false,false, 'BIQUMilYdl4-cHeNgYIE03vFTPrTEqm1QPNFGTJ
 
 $numbers = array($to);
 $sender = 'LifeStream';
-$message = 'HardCoded Msg';
+$message = 'Your request has been accepted by someone.Please login to view details';
 try {
     $result = $textlocal->sendSms($numbers, $message, $sender);
     ?>
