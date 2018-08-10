@@ -43,13 +43,6 @@ else
 	$sql="INSERT INTO donor_register VALUES (null,'$lid','$name','$age','$bloodgroup','$gender','$dob','$weight','$address','$phone_no','$state','$district','$location','$status','$email')";
 	$query=mysqli_query($conn,$sql);
 	if($query){
-		?>
-		<!--script>
-			alert("Registration Completed.");
-			window.location.href="index.php";
-		</script--!>
-<?php
-	
 	//Testing SmS	
 	require('textlocal.class.php');
 
@@ -64,7 +57,6 @@ else
 	    print_r($result);
 	} catch (Exception $e) {
 	    die('Error: ' . $e->getMessage());
-	}
 	}
 	/*
 	// Authorisation details.
@@ -87,7 +79,7 @@ else
 	$result = curl_exec($ch); // This is the result from the API
 	curl_close($ch);
 	*/
-	<? }
+	 }
 	else{
 		?>
 		<script>
