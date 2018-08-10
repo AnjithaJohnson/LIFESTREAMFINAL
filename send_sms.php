@@ -1,7 +1,7 @@
 <?php
-$lid=$_GET["na"];
+$nid=$_GET["na"];
 $conn=mysqli_connect("cvktne7b4wbj4ks1.chr7pe7iynqr.eu-west-1.rds.amazonaws.com", "ji76idbl7xrpwijd", "ktsq582xb1j7ssmu","jlrcv5u4hn6l67a6");
-$sql="select phone_no from donor_register where l_id='$lid'";
+$sql="select phone_no from notification where id='$nid'";
 $result=mysqli_query($conn,$sql);
       if(mysqli_num_rows($result)>0)
       {
@@ -10,7 +10,7 @@ $result=mysqli_query($conn,$sql);
             $to=$data["phone_no"];
           }
       }
-require('../textlocal.class.php');
+require('textlocal.class.php');
 
 $textlocal = new Textlocal(false,false, 'BIQUMilYdl4-cHeNgYIE03vFTPrTEqm1QPNFGTJMh5');
 
@@ -29,7 +29,3 @@ try {
     die('Error: ' . $e->getMessage());
 }
 ?>
-<script>
-alert("");
-window.location="admin_donor_info.php";
-</script>
